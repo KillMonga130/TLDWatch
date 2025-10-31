@@ -1,0 +1,29 @@
+{
+  "name": "video-learning-accelerator",
+  "version": "1.0.0",
+  "description": "Chrome Extension that transforms passive video consumption into active, intelligent learning using AI",
+  "main": "src/manifest.json",
+  "scripts": {
+    "build": "echo 'No build process needed for this extension'",
+    "test": "echo 'Tests will be added in future tasks'",
+    "lint": "echo 'Linting will be added in future tasks'"
+  },
+  "keywords": [
+    "chrome-extension",
+    "video-learning",
+    "ai",
+    "education",
+    "youtube",
+    "coursera",
+    "udemy",
+    "linkedin-learning"
+  ],
+  "author": "Video Learning Accelerator Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/video-learning-accelerator.git"
+  },
+  "devDependencies": {},
+  "dependencies": {}
+}
