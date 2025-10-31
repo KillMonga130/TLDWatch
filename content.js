@@ -64,6 +64,9 @@ class VideoAccelerator {
     this.setupVideoListeners();
     this.setupUrlChangeDetection();
     
+    // Try to load previously saved chapters
+    setTimeout(() => this.loadChaptersFromStorage(), 1000);
+    
     // Check if we have cached transcript for this video
     const videoId = this.getVideoId();
     if (videoId && transcriptCache.has(videoId)) {
@@ -870,9 +873,14 @@ class VideoAccelerator {
     const exportData = {
       video: videoMetadata,
       chapters: chapterData,
+      transcriptLength: transcriptText.length,
+      quality: this.assessChapterQuality(chapterData),
       generatedAt: new Date().toISOString(),
       extension: 'Video Learning Accelerator v1.0'
     };
+    
+    // Save to Chrome storage for persistence
+    this.saveChaptersToStorage(exportData);
     
     // Create downloadable file
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -885,7 +893,68 @@ class VideoAccelerator {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    console.log('[VLA] Chapters exported');
+    console.log('[VLA] Chapters exported and saved');
+  }
+
+  saveChaptersToStorage(data) {
+    const videoId = this.getVideoId();
+    if (!videoId) return;
+    
+    const storageKey = `chapters_${videoId}`;
+    const storageData = {
+      [storageKey]: {
+        ...data,
+        savedAt: new Date().toISOString()
+      }
+    };
+    
+    chrome.storage.local.set(storageData, () => {
+      if (chrome.runtime.lastError) {
+        console.error('[VLA] Failed to save chapters:', chrome.runtime.lastError);
+      } else {
+        console.log('[VLA] 💾 Chapters saved to storage for video:', videoId);
+      }
+    });
+  }
+
+  loadChaptersFromStorage() {
+    const videoId = this.getVideoId();
+    if (!videoId) return;
+    
+    const storageKey = `chapters_${videoId}`;
+    
+    chrome.storage.local.get([storageKey], (result) => {
+      if (chrome.runtime.lastError) {
+        console.error('[VLA] Failed to load chapters:', chrome.runtime.lastError);
+        return;
+      }
+      
+      const savedData = result[storageKey];
+      if (savedData && savedData.chapters && savedData.chapters.length > 0) {
+        console.log('[VLA] 📂 Found saved chapters for this video');
+        chapterData = savedData.chapters;
+        videoMetadata = savedData.video || videoMetadata;
+        
+        // Display the saved chapters
+        this.displayChapters(chapterData);
+        
+        // Update button text
+        const btn = document.getElementById('vla-generate-btn');
+        if (btn) {
+          btn.textContent = 'Regenerate Chapters';
+        }
+        
+        // Show notification
+        const container = document.getElementById('vla-chapters-container');
+        if (container) {
+          const notice = document.createElement('div');
+          notice.className = 'vla-saved-notice';
+          notice.innerHTML = '💾 Loaded previously generated chapters';
+          container.insertBefore(notice, container.firstChild);
+          setTimeout(() => notice.remove(), 5000);
+        }
+      }
+    });
   }
 }
 

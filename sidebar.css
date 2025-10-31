@@ -889,6 +889,29 @@ select.form-control {
   border: 1px solid rgba(var(--color-error-rgb), 0.3);
 }
 
+.vla-saved-notice {
+  padding: var(--space-12);
+  margin-bottom: var(--space-12);
+  background: rgba(var(--color-success-rgb), 0.1);
+  border: 1px solid rgba(var(--color-success-rgb), 0.3);
+  border-radius: var(--radius-sm);
+  color: var(--color-success);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  animation: slideDown 0.3s var(--ease-standard);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .vla-chapters-header {
   display: flex;
   justify-content: space-between;
@@ -896,12 +919,54 @@ select.form-control {
   margin-bottom: var(--space-12);
   padding-bottom: var(--space-8);
   border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
+  gap: var(--space-8);
 }
 
 .vla-chapter-count {
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
   font-weight: var(--font-weight-medium);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.vla-chapter-actions {
+  display: flex;
+  gap: var(--space-8);
+}
+
+.vla-quality-badge {
+  display: inline-block;
+  padding: var(--space-2) var(--space-8);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.vla-quality-excellent {
+  background: rgba(var(--color-success-rgb), 0.15);
+  color: var(--color-success);
+  border: 1px solid rgba(var(--color-success-rgb), 0.3);
+}
+
+.vla-quality-good {
+  background: rgba(var(--color-success-rgb), 0.1);
+  color: var(--color-success);
+  border: 1px solid rgba(var(--color-success-rgb), 0.2);
+}
+
+.vla-quality-fair {
+  background: rgba(var(--color-warning-rgb), 0.15);
+  color: var(--color-warning);
+  border: 1px solid rgba(var(--color-warning-rgb), 0.3);
+}
+
+.vla-quality-basic {
+  background: rgba(var(--color-info-rgb), 0.15);
+  color: var(--color-info);
+  border: 1px solid rgba(var(--color-info-rgb), 0.3);
 }
 
 .vla-btn-export {
@@ -913,6 +978,7 @@ select.form-control {
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-standard);
   color: var(--color-text);
+  white-space: nowrap;
 }
 
 .vla-btn-export:hover {
