@@ -239,6 +239,7 @@ class VideoAccelerator {
         <button class="vla-tab-btn active" data-tab="chapters">📚 Chapters</button>
         <button class="vla-tab-btn" data-tab="transcript">📝 Transcript</button>
         <button class="vla-tab-btn" data-tab="quiz">🧠 Quiz</button>
+        <button class="vla-tab-btn" data-tab="recommendations">✨ Related</button>
       </div>
 
       <div class="vla-content">
@@ -270,6 +271,15 @@ class VideoAccelerator {
           <button id="vla-generate-quiz-btn" class="vla-btn-primary" style="display:none;">Generate Quiz</button>
         </div>
 
+        <div class="vla-tab-content" id="recommendations-tab">
+          <div class="vla-recommendations-header">
+            <h4>Related Learning</h4>
+            <p class="vla-recommendations-subtitle">Continue your learning journey</p>
+          </div>
+          <div id="vla-recommendations-container">
+            <p class="vla-loading">Recommendations will appear here...</p>
+          </div>
+        </div>
 
       </div>
     `;
@@ -828,6 +838,7 @@ class VideoAccelerator {
 
         // Also populate other tabs
         this.displayTranscript();
+        this.displayRecommendations();
 
         // Show quiz generate button
         const quizBtn = document.getElementById('vla-generate-quiz-btn');
@@ -1236,6 +1247,59 @@ class VideoAccelerator {
         }
       });
     });
+  }
+
+  async displayRecommendations() {
+    const container = document.getElementById('vla-recommendations-container');
+    if (!container) return;
+
+    if (!chapterData || chapterData.length === 0) {
+      container.innerHTML = '<p class="vla-loading">Generate chapters first to see recommendations</p>';
+      return;
+    }
+
+    container.innerHTML = '<div class="vla-loading-state"><div class="vla-spinner"></div><p>Generating recommendations...</p></div>';
+
+    try {
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          {
+            action: 'generateRecommendations',
+            chapters: chapterData,
+            metadata: videoMetadata
+          },
+          (resp) => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+            } else {
+              resolve(resp);
+            }
+          }
+        );
+      });
+
+      if (response && response.success && response.recommendations) {
+        const recommendations = response.recommendations;
+        
+        container.innerHTML = recommendations.map(rec => `
+          <div class="vla-recommendation-card">
+            <div class="vla-recommendation-content">
+              <h5>${rec.title}</h5>
+              <p class="vla-recommendation-description">${rec.description}</p>
+              <div class="vla-recommendation-meta">
+                <span class="vla-recommendation-platform">${rec.platform}</span>
+                <span class="vla-recommendation-type">${rec.type}</span>
+              </div>
+            </div>
+          </div>
+        `).join('');
+      } else {
+        container.innerHTML = '<p class="vla-error">Unable to generate recommendations</p>';
+      }
+    } catch (error) {
+      console.error('[VLA] Recommendations error:', error);
+      container.innerHTML = '<p class="vla-error">Error generating recommendations</p>';
+    }
   }
 
   async generateQuiz() {

@@ -2253,3 +2253,108 @@ Transcript Tab Styles */
   font-size: var(--font-size-base);
   flex: 1;
 }
+
+
+/* ===================================
+   RECOMMENDATIONS TAB STYLES
+   =================================== */
+
+.vla-recommendations-header {
+  margin-bottom: var(--space-16);
+  padding-bottom: var(--space-12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vla-recommendations-header h4 {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: #ffffff;
+  margin: 0 0 var(--space-4) 0;
+}
+
+.vla-recommendations-subtitle {
+  font-size: var(--font-size-sm);
+  color: #9ca3af;
+  margin: 0;
+}
+
+#vla-recommendations-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+}
+
+.vla-recommendation-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+  padding: var(--space-16);
+  transition: all var(--duration-normal);
+  cursor: pointer;
+}
+
+.vla-recommendation-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.vla-recommendation-content h5 {
+  font-size: var(--font-size-base);
+  color: #ffffff;
+  margin: 0 0 var(--space-8) 0;
+  line-height: 1.4;
+}
+
+.vla-recommendation-description {
+  font-size: var(--font-size-sm);
+  color: #d1d5db;
+  margin: 0 0 var(--space-12) 0;
+  line-height: 1.5;
+}
+
+.vla-recommendation-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.vla-recommendation-platform {
+  font-size: var(--font-size-xs);
+  color: #9ca3af;
+  font-weight: var(--font-weight-medium);
+}
+
+.vla-recommendation-type {
+  display: inline-block;
+  background: rgba(139, 92, 246, 0.2);
+  color: #a78bfa;
+  padding: var(--space-4) var(--space-10);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Scrollbar for recommendations */
+#vla-recommendations-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+#vla-recommendations-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-full);
+}
+
+#vla-recommendations-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-full);
+}
+
+#vla-recommendations-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}

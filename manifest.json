@@ -11,6 +11,10 @@
     "offscreen"
   ],
   
+  "trial_tokens": [
+    "YOUR_ORIGIN_TRIAL_TOKEN_HERE"
+  ],
+  
   "host_permissions": [
     "https://www.youtube.com/*",
     "https://www.coursera.org/*",

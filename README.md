@@ -4,11 +4,13 @@ Transform passive video watching into active, intelligent learning with AI-power
 
 ## ✨ Features
 
-### 🤖 AI-Powered Chapter Generation
-- Automatically analyzes video content using Chrome's built-in AI
-- Generates intelligent chapters with timestamps, titles, and summaries
-- Works offline once AI model is downloaded
-- Privacy-first: all processing happens locally
+### 🤖 AI-Powered Chapter Generation (NEW APIs!)
+- Uses Chrome's **Writer API** for intelligent content generation
+- Uses **Rewriter API** for improving chapter titles and summaries
+- Uses **Proofreader API** for fixing transcript errors
+- Uses **Summarizer API** for condensing long content
+- Works offline once Gemini Nano model is downloaded
+- Privacy-first: all processing happens locally on your device
 
 ### 🎯 Smart Navigation
 - **Click-to-seek**: Jump to any chapter instantly
@@ -45,14 +47,22 @@ Transform passive video watching into active, intelligent learning with AI-power
 
 ### Prerequisites
 
-**⚠️ IMPORTANT: Chrome AI Setup Required**
+**⚠️ IMPORTANT: Chrome Built-in AI Setup Required**
 
-This extension requires Chrome's Built-in AI (Gemini Nano). You must:
-1. Use **Chrome Dev** or **Chrome Canary** (not regular Chrome)
-2. Enable AI flags
-3. Download Gemini Nano model
+This extension uses Chrome's new Built-in AI APIs:
+- ✏️ **Writer API** - Generate chapters and quiz questions
+- 🖊️ **Rewriter API** - Improve text quality
+- 🔤 **Proofreader API** - Fix grammar and spelling
+- 📄 **Summarizer API** - Create concise summaries
+- 🌐 **Translator API** - Multi-language support
 
-**📖 See [AI_SETUP_GUIDE.md](AI_SETUP_GUIDE.md) for complete setup instructions**
+**Setup Requirements:**
+1. Use **Chrome Dev** or **Chrome Canary** 137+ (not regular Chrome)
+2. Join the **Origin Trial** and add token to manifest
+3. Enable Chrome flags for each API
+4. Download Gemini Nano model (~22GB)
+
+**📖 See [SETUP_GUIDE.md](SETUP_GUIDE.md) for complete setup instructions**
 
 Without AI setup, the extension will work in "Fallback Mode" with basic features only.
 
@@ -170,13 +180,17 @@ Without AI setup, the extension will work in "Fallback Mode" with basic features
    - Platform-specific selectors for each video site
    - Falls back to page metadata if transcript unavailable
 
-2. **AI Analysis**
-   - Uses Chrome's `self.ai.languageModel` API
-   - Sends enhanced prompt with video context
-   - Parses JSON response with validation
+2. **AI Analysis (NEW APIs!)**
+   - **Writer API**: Generates chapters from transcript analysis
+   - **Rewriter API**: Improves chapter titles and summaries
+   - **Proofreader API**: Fixes grammar in transcripts
+   - **Summarizer API**: Creates concise chapter summaries
+   - Sends context-aware prompts with video metadata
+   - Parses and validates JSON responses
 
 3. **Fallback System**
-   - If AI unavailable: rule-based chapter generation
+   - If Writer API unavailable: tries Summarizer + Rewriter combo
+   - If all AI unavailable: rule-based chapter generation
    - Divides content into logical sections
    - Always provides useful output
 
@@ -252,13 +266,16 @@ chapterData;
 - Ensure video is playing or has played
 - Check that transcript is available (try playing video first)
 - Look for error messages in sidebar
-- Check if Chrome AI is available in your region
+- Check if Chrome AI APIs are available in your region
 
 ### AI not available
-- Chrome 127+ required
-- Enable "Prompt API" in `chrome://flags`
+- Chrome 137+ (Dev/Canary) required
+- Enable flags: `chrome://flags/#writer-api-for-gemini-nano`
+- Join origin trial and add token to manifest.json
+- Download Gemini Nano model (22GB storage needed)
 - AI may not be available in all regions yet
 - Extension will use fallback chapter generation
+- See [SETUP_GUIDE.md](SETUP_GUIDE.md) for detailed instructions
 
 ### Transcript extraction failing
 - Some platforms may block transcript access
