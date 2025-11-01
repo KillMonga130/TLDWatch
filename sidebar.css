@@ -1077,11 +1077,25 @@ select.form-control {
   display: inline-block;
   padding: var(--space-4) var(--space-12);
   border-radius: var(--radius-full);
-  font-size: var(--font-size-xs);
+  font-size: var(--space-xs);
   font-weight: var(--font-weight-semibold);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  animation: badgePop 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.vla-fallback-badge {
+  display: inline-block;
+  padding: var(--space-4) var(--space-12);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  background: rgba(250, 204, 21, 0.2);
+  color: #facc15;
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   animation: badgePop 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 }
 

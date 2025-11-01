@@ -12,15 +12,27 @@ async function ensureOffscreenDocument() {
   // If already creating, wait for it to complete
   if (offscreenCreating) {
     console.log('[Background] Offscreen creation already in progress, waiting...');
-    // Wait a bit and check again
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 250));
     return offscreenReady;
   }
 
-  // If already ready, just return
+  // If already ready, verify it still exists
   if (offscreenReady) {
-    console.log('[Background] Offscreen document already ready');
-    return true;
+    try {
+      const existingContexts = await chrome.runtime.getContexts({
+        contextTypes: ['OFFSCREEN_DOCUMENT']
+      });
+      if (existingContexts.length > 0) {
+        console.log('[Background] Offscreen document verified');
+        return true;
+      } else {
+        console.log('[Background] Offscreen was ready but no longer exists, recreating...');
+        offscreenReady = false;
+      }
+    } catch (error) {
+      console.log('[Background] Error checking offscreen, will recreate:', error.message);
+      offscreenReady = false;
+    }
   }
 
   offscreenCreating = true;
@@ -40,20 +52,21 @@ async function ensureOffscreenDocument() {
 
     console.log('[Background] Creating offscreen document...');
     
-    // ✅ FIXED: Use only VALID reasons from the allowed list
     await chrome.offscreen.createDocument({
       url: chrome.runtime.getURL('offscreen.html'),
-      reasons: ['DOM_SCRAPING'],  // ✅ Valid reason
-      justification: 'Process video content and generate chapters'
+      reasons: ['DOM_SCRAPING'],
+      justification: 'Process video content and generate chapters with AI'
     });
 
     console.log('[Background] ✅ Offscreen document created');
     offscreenReady = true;
     offscreenCreating = false;
+    
+    // Wait a moment for offscreen to initialize
+    await new Promise(resolve => setTimeout(resolve, 100));
     return true;
   } catch (error) {
     console.error('[Background] Offscreen creation error:', error.message);
-    // Gracefully continue without offscreen
     offscreenReady = false;
     offscreenCreating = false;
     return false;
@@ -107,45 +120,102 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return false;
 });
 
+async function safeOffscreenCall(action, data, fallbackFn) {
+  let retries = 0;
+  const maxRetries = 2;
+  
+  while (retries < maxRetries) {
+    try {
+      // Ensure offscreen exists
+      await ensureOffscreenDocument();
+      
+      if (!offscreenReady) {
+        console.log('[Background] Offscreen not ready, using fallback');
+        return fallbackFn();
+      }
+      
+      // Make the call
+      return await new Promise((resolve) => {
+        chrome.runtime.sendMessage(data, (response) => {
+          if (chrome.runtime.lastError) {
+            const error = chrome.runtime.lastError.message;
+            console.error('[Background] Runtime error:', error);
+            
+            // Check if context was invalidated
+            if (error.includes('Extension context invalidated') || 
+                error.includes('message port closed')) {
+              console.log('[Background] Context invalidated, will retry...');
+              offscreenReady = false;
+              resolve({ needsRetry: true });
+            } else {
+              resolve(fallbackFn());
+            }
+          } else {
+            resolve(response || fallbackFn());
+          }
+        });
+      });
+    } catch (error) {
+      console.error('[Background] Safe call error:', error);
+      if (error.message && error.message.includes('Extension context invalidated')) {
+        console.log('[Background] Context invalidated, retrying...');
+        offscreenReady = false;
+        retries++;
+        await new Promise(resolve => setTimeout(resolve, 250));
+        continue;
+      }
+      return fallbackFn();
+    }
+    
+    retries++;
+  }
+  
+  console.log('[Background] Max retries reached, using fallback');
+  return fallbackFn();
+}
+
 async function handleChapterGeneration(request, sendResponse) {
   try {
-    // Ensure offscreen exists
-    if (!offscreenReady) {
-      await ensureOffscreenDocument();
-    }
-
-    // Forward to offscreen if available
-    if (offscreenReady) {
-      chrome.runtime.sendMessage(
+    const result = await safeOffscreenCall(
+      'generateChapters',
+      { 
+        action: 'generateChapters', 
+        transcript: request.transcript,
+        metadata: request.metadata || {}
+      },
+      () => ({
+        success: true,
+        chapters: generateFallbackChapters(request.transcript, request.metadata),
+        usedFallback: true
+      })
+    );
+    
+    if (result.needsRetry) {
+      // Retry once more
+      await new Promise(resolve => setTimeout(resolve, 250));
+      const retryResult = await safeOffscreenCall(
+        'generateChapters',
         { 
           action: 'generateChapters', 
           transcript: request.transcript,
           metadata: request.metadata || {}
         },
-        (response) => {
-          if (chrome.runtime.lastError) {
-            console.log('[Background] Using fallback - offscreen unavailable');
-            sendResponse({
-              success: true,
-              chapters: generateFallbackChapters(request.transcript, request.metadata)
-            });
-          } else {
-            sendResponse(response || { success: true, chapters: [] });
-          }
-        }
+        () => ({
+          success: true,
+          chapters: generateFallbackChapters(request.transcript, request.metadata),
+          usedFallback: true
+        })
       );
+      sendResponse(retryResult);
     } else {
-      // Fallback if offscreen not available
-      sendResponse({
-        success: true,
-        chapters: generateFallbackChapters(request.transcript, request.metadata)
-      });
+      sendResponse(result);
     }
   } catch (error) {
     console.error('[Background] Generation error:', error);
     sendResponse({
       success: true,
-      chapters: generateFallbackChapters(request.transcript, request.metadata)
+      chapters: generateFallbackChapters(request.transcript, request.metadata),
+      usedFallback: true
     });
   }
 }
@@ -182,33 +252,36 @@ async function handleCapabilityCheck(sendResponse) {
 
 async function handleQuizGeneration(request, sendResponse) {
   try {
-    if (!offscreenReady) {
-      await ensureOffscreenDocument();
-    }
-
-    if (offscreenReady) {
-      chrome.runtime.sendMessage(
+    const result = await safeOffscreenCall(
+      'generateQuiz',
+      { 
+        action: 'generateQuiz', 
+        chapters: request.chapters,
+        transcript: request.transcript
+      },
+      () => ({
+        success: true,
+        questions: generateFallbackQuiz(request.chapters)
+      })
+    );
+    
+    if (result.needsRetry) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+      const retryResult = await safeOffscreenCall(
+        'generateQuiz',
         { 
           action: 'generateQuiz', 
           chapters: request.chapters,
           transcript: request.transcript
         },
-        (response) => {
-          if (chrome.runtime.lastError) {
-            sendResponse({
-              success: true,
-              questions: generateFallbackQuiz(request.chapters)
-            });
-          } else {
-            sendResponse(response || { success: true, questions: [] });
-          }
-        }
+        () => ({
+          success: true,
+          questions: generateFallbackQuiz(request.chapters)
+        })
       );
+      sendResponse(retryResult);
     } else {
-      sendResponse({
-        success: true,
-        questions: generateFallbackQuiz(request.chapters)
-      });
+      sendResponse(result);
     }
   } catch (error) {
     console.error('[Background] Quiz generation error:', error);
@@ -221,40 +294,44 @@ async function handleQuizGeneration(request, sendResponse) {
 
 async function handleExplanation(request, sendResponse) {
   try {
-    if (!offscreenReady) {
-      await ensureOffscreenDocument();
-    }
-
-    if (offscreenReady) {
-      chrome.runtime.sendMessage(
+    const result = await safeOffscreenCall(
+      'explainMoment',
+      { 
+        action: 'explainMoment', 
+        context: request.context,
+        transcript: request.transcript,
+        frameData: request.frameData
+      },
+      () => ({
+        success: true,
+        explanation: request.context + '. The video is presenting this content.'
+      })
+    );
+    
+    if (result.needsRetry) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+      const retryResult = await safeOffscreenCall(
+        'explainMoment',
         { 
           action: 'explainMoment', 
           context: request.context,
           transcript: request.transcript,
           frameData: request.frameData
         },
-        (response) => {
-          if (chrome.runtime.lastError) {
-            sendResponse({
-              success: true,
-              explanation: 'At this moment in the video, the content is being presented.'
-            });
-          } else {
-            sendResponse(response || { success: true, explanation: 'Content is being presented.' });
-          }
-        }
+        () => ({
+          success: true,
+          explanation: request.context + '. The video is presenting this content.'
+        })
       );
+      sendResponse(retryResult);
     } else {
-      sendResponse({
-        success: true,
-        explanation: 'At this moment in the video, the content is being presented.'
-      });
+      sendResponse(result);
     }
   } catch (error) {
     console.error('[Background] Explanation error:', error);
     sendResponse({
       success: true,
-      explanation: 'At this moment in the video, the content is being presented.'
+      explanation: request.context + '. The video is presenting this content.'
     });
   }
 }

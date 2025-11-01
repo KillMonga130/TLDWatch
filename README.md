@@ -35,17 +35,26 @@ Transform passive video watching into active, intelligent learning with AI-power
 ### 🆕 Enhanced Features (NEW!)
 - **📝 Interactive Transcript Tab** - Full transcript with clickable timestamps
 - **🧠 AI-Generated Quiz Tab** - Test knowledge with 5 questions + explanations
-- **✨ Smart Recommendations Tab** - Discover 4 related videos
-- **💡 Click-to-Explain** - Click video for instant AI explanations
-- **🎯 4-Tab Interface** - Chapters, Transcript, Quiz, Recommendations
+- **💡 Double-Click to Explain** - Double-click video or press Alt+E for instant AI explanations
+- **⌨️ Keyboard Shortcuts** - 6 shortcuts for power users (Alt+G, Alt+C, Alt+T, Alt+Q, Alt+E, Alt+X)
+- **🎯 3-Tab Interface** - Chapters, Transcript, Quiz
 - **📊 Progress Tracking** - Visual progress bars and quiz scoring
 - **🔗 Deep Linking** - Quiz questions link to relevant timestamps
 
-> 📖 **See [ENHANCED_FEATURES.md](ENHANCED_FEATURES.md) for detailed documentation**
-> 
-> ⚡ **See [QUICK_REFERENCE.md](QUICK_REFERENCE.md) for quick start guide**
-
 ## 🚀 Installation
+
+### Prerequisites
+
+**⚠️ IMPORTANT: Chrome AI Setup Required**
+
+This extension requires Chrome's Built-in AI (Gemini Nano). You must:
+1. Use **Chrome Dev** or **Chrome Canary** (not regular Chrome)
+2. Enable AI flags
+3. Download Gemini Nano model
+
+**📖 See [AI_SETUP_GUIDE.md](AI_SETUP_GUIDE.md) for complete setup instructions**
+
+Without AI setup, the extension will work in "Fallback Mode" with basic features only.
 
 ### From Source (Development)
 
@@ -93,19 +102,44 @@ Transform passive video watching into active, intelligent learning with AI-power
 
 ### Advanced Features
 
+#### 📝 Transcript Tab
+- Click "Transcript" tab to view full transcript
+- Click any purple timestamp to jump to that moment
+- Real YouTube captions when available
+- Fallback to estimated timestamps
+
+#### 🧠 Quiz Tab
+- Click "Quiz" tab after generating chapters
+- Click "Generate Quiz" for 5 AI questions
+- Answer questions with instant feedback
+- See grade, stats, and answer review
+- Click "Review at X:XX" to jump to relevant chapter
+
+#### 💡 Click-to-Explain
+- **Double-click** anywhere on the video
+- OR press **Alt+E** keyboard shortcut
+- AI explains what's happening at that moment
+- Tooltip auto-dismisses after 8 seconds
+- Works best after generating chapters
+
+#### ⌨️ Keyboard Shortcuts
+- **Alt+G** - Generate chapters
+- **Alt+C** - Switch to Chapters tab
+- **Alt+T** - Switch to Transcript tab
+- **Alt+Q** - Switch to Quiz tab
+- **Alt+E** - Explain current moment
+- **Alt+X** - Close sidebar
+- Click ⌨️ icon in header to see all shortcuts
+
 #### Export Chapters
 - Click the 📥 Export button in chapters header
 - Downloads JSON file with all chapter data
 - Includes video metadata and timestamps
 
-#### Debug Mode
-- Switch to "Status" tab
-- Click "Debug" button
-- Check console for detailed information
-
-#### Regenerate Chapters
-- Click "Regenerate Chapters" to create new analysis
-- Useful if transcript extraction improved
+#### Copy to Clipboard
+- Click the 📋 Copy button
+- Formatted text copied to clipboard
+- Paste into notes or documents
 
 ## 🛠️ Technical Details
 

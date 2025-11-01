@@ -9,7 +9,7 @@ let languageModelSession = null;
 // Listen for messages
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Offscreen] Request:', request.action);
-  
+
   if (!request || !request.action) {
     sendResponse({ success: false, error: 'No action specified' });
     return false;
@@ -17,43 +17,44 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'generateChapters') {
     generateChaptersAI(request.transcript, request.metadata)
-      .then(chapters => {
-        sendResponse({ 
-          success: true, 
-          chapters: Array.isArray(chapters) ? chapters : []
+      .then(result => {
+        sendResponse({
+          success: true,
+          chapters: Array.isArray(result.chapters) ? result.chapters : [],
+          usedFallback: result.usedFallback || false
         });
       })
       .catch(error => {
         console.error('[Offscreen] Generation error:', error);
-        sendResponse({ 
-          success: false, 
+        sendResponse({
+          success: false,
           error: error.message || 'Generation failed',
           chapters: []
         });
       });
     return true;
   }
-  
+
   if (request.action === 'transcribeAudio') {
     transcribeAudioAI(request.audioBlob)
       .then(text => sendResponse({ success: true, text }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
-  
+
   if (request.action === 'checkAICapabilities') {
     checkCapabilities()
-      .then(caps => sendResponse({ 
-        success: true, 
+      .then(caps => sendResponse({
+        success: true,
         capabilities: caps || { available: false }
       }))
       .catch(error => {
         console.error('[Offscreen] Capability check error:', error);
-        sendResponse({ 
-          success: false, 
-          capabilities: { 
-            available: false, 
-            reason: error.message 
+        sendResponse({
+          success: false,
+          capabilities: {
+            available: false,
+            reason: error.message
           }
         });
       });
@@ -86,29 +87,45 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 async function checkCapabilities() {
   try {
-    // ✅ FIX: Proper null check
-    if (!self.ai || typeof self.ai.languageModel !== 'object') {
-      console.log('[Offscreen] AI APIs not available');
-      return { 
-        available: false, 
-        reason: 'AI APIs not available',
+    console.log('[Offscreen] Checking AI capabilities...');
+    console.log('[Offscreen] self.ai exists:', !!self.ai);
+    console.log('[Offscreen] self.ai.languageModel exists:', !!self.ai?.languageModel);
+
+    // Check if Chrome Built-in AI is available
+    if (!self.ai || !self.ai.languageModel) {
+      console.error('[Offscreen] ❌ Chrome Built-in AI not available');
+      console.error('[Offscreen] 📖 See AI_SETUP_GUIDE.md for setup instructions');
+      return {
+        available: false,
+        reason: 'Chrome Built-in AI not available. Use Chrome Dev/Canary with flags enabled. See AI_SETUP_GUIDE.md',
         status: 'unavailable'
       };
     }
-    
+
+    // Check availability status
     const availability = await self.ai.languageModel.availability();
-    console.log('[Offscreen] AI availability:', availability);
-    
+    console.log('[Offscreen] AI availability status:', availability);
+
+    // Available if 'readily' or 'after-download'
+    const isAvailable = availability === 'readily' || availability === 'after-download';
+
+    if (isAvailable) {
+      console.log('[Offscreen] ✅ AI is available and ready!');
+    } else {
+      console.warn('[Offscreen] ⚠️ AI status:', availability);
+      console.warn('[Offscreen] 📖 See AI_SETUP_GUIDE.md for setup instructions');
+    }
+
     return {
-      available: availability === 'readily' || availability === 'after-download',
+      available: isAvailable,
       status: availability,
-      reason: null
+      reason: isAvailable ? null : `AI status: ${availability}. See AI_SETUP_GUIDE.md for setup instructions.`
     };
   } catch (error) {
     console.error('[Offscreen] Capability check error:', error);
-    return { 
-      available: false, 
-      reason: error.message,
+    return {
+      available: false,
+      reason: 'Error checking AI availability: ' + error.message,
       status: 'error'
     };
   }
@@ -118,31 +135,37 @@ async function generateChaptersAI(transcript, metadata = {}) {
   try {
     if (!transcript || typeof transcript !== 'string') {
       console.warn('[Offscreen] Invalid transcript');
-      return generateBasicChapters(transcript || '', metadata);
+      const chapters = generateBasicChapters(transcript || '', metadata);
+      return { chapters, usedFallback: true };
     }
 
     if (transcript.length < 50) {
-      return [{
-        timestamp: '0:00',
-        timestampSeconds: 0,
-        title: 'Full Content',
-        summary: transcript
-      }];
+      return {
+        chapters: [{
+          timestamp: '0:00',
+          timestampSeconds: 0,
+          title: 'Full Content',
+          summary: transcript
+        }],
+        usedFallback: true
+      };
     }
-    
+
     // Check AI availability
     if (!self.ai || !self.ai.languageModel) {
       console.log('[Offscreen] AI not available, using fallback');
-      return generateBasicChapters(transcript, metadata);
+      const chapters = generateBasicChapters(transcript, metadata);
+      return { chapters, usedFallback: true };
     }
 
     const availability = await self.ai.languageModel.availability();
     console.log('[Offscreen] LM availability:', availability);
-    
+
     if (availability === 'unavailable') {
-      return generateBasicChapters(transcript, metadata);
+      const chapters = generateBasicChapters(transcript, metadata);
+      return { chapters, usedFallback: true };
     }
-    
+
     // Initialize Language Model
     if (!languageModelSession) {
       console.log('[Offscreen] Creating language model session...');
@@ -151,12 +174,12 @@ async function generateChaptersAI(transcript, metadata = {}) {
         topK: 40
       });
     }
-    
+
     // Enhanced AI prompt with better instructions
     const videoDuration = metadata.duration || 0;
     const videoTitle = metadata.title || 'Video';
     const platform = metadata.platform || 'unknown';
-    
+
     const prompt = `You are an expert at analyzing educational video content and creating structured chapter breakdowns.
 
 VIDEO INFORMATION:
@@ -190,22 +213,23 @@ OUTPUT FORMAT (JSON array only):
   { "timestamp": "0:00", "title": "Introduction to Topic", "summary": "Overview of what will be covered in this video." },
   { "timestamp": "3:45", "title": "Core Concept Explanation", "summary": "Detailed explanation of the main concept with examples." }
 ]`;
-    
+
     console.log('[Offscreen] Sending enhanced prompt to AI...');
     const response = await languageModelSession.prompt(prompt);
     console.log('[Offscreen] AI Response received:', response.substring(0, 200));
-    
+
     try {
       // Parse response safely
       const jsonMatch = response.match(/\[[\s\S]*\]/);
       const jsonStr = jsonMatch ? jsonMatch[0] : response.trim();
       const chapters = JSON.parse(jsonStr);
-      
+
       if (!Array.isArray(chapters)) {
         console.warn('[Offscreen] AI response not an array');
-        return generateBasicChapters(transcript, metadata);
+        const fallbackChapters = generateBasicChapters(transcript, metadata);
+        return { chapters: fallbackChapters, usedFallback: true };
       }
-      
+
       // Validate and enhance chapters
       const validChapters = chapters
         .filter(ch => ch && ch.timestamp && ch.title)
@@ -216,28 +240,31 @@ OUTPUT FORMAT (JSON array only):
         }))
         .sort((a, b) => a.timestampSeconds - b.timestampSeconds)
         .slice(0, 20);
-      
+
       if (validChapters.length === 0) {
-        return generateBasicChapters(transcript, metadata);
+        const chapters = generateBasicChapters(transcript, metadata);
+        return { chapters, usedFallback: true };
       }
-      
+
       console.log(`[Offscreen] ✅ Generated ${validChapters.length} AI chapters`);
-      return validChapters;
+      return { chapters: validChapters, usedFallback: false };
     } catch (parseError) {
       console.error('[Offscreen] JSON parse error:', parseError);
-      return generateBasicChapters(transcript, metadata);
+      const chapters = generateBasicChapters(transcript, metadata);
+      return { chapters, usedFallback: true };
     }
   } catch (error) {
     console.error('[Offscreen] Chapter generation error:', error);
-    return generateBasicChapters(transcript, metadata);
+    const chapters = generateBasicChapters(transcript, metadata);
+    return { chapters, usedFallback: true };
   }
 }
 
 function parseTimestampToSeconds(timestamp) {
   if (!timestamp) return 0;
-  
+
   const parts = timestamp.split(':').map(p => parseInt(p) || 0);
-  
+
   if (parts.length === 3) {
     // H:MM:SS
     return parts[0] * 3600 + parts[1] * 60 + parts[2];
@@ -250,46 +277,46 @@ function parseTimestampToSeconds(timestamp) {
 }
 
 function generateBasicChapters(transcript, metadata = {}) {
+  console.log('[Offscreen] Using fallback chapter generation (no AI)');
+
   try {
-    if (!transcript || typeof transcript !== 'string') {
+    if (!transcript || typeof transcript !== 'string' || transcript.length < 50) {
       return [{
         timestamp: '0:00',
         timestampSeconds: 0,
-        title: 'Content',
-        summary: 'Video content'
+        title: metadata.title || 'Video Content',
+        summary: 'No transcript available for chapter generation'
       }];
     }
 
-    const videoDuration = metadata.duration || 600; // Default 10 minutes
+    const videoDuration = metadata.duration || 600;
     const words = transcript.split(/\s+/).filter(w => w.length > 0);
-    
-    // Determine optimal chapter count based on content length and duration
-    const wordsPerChapter = 250;
-    const maxChapters = Math.min(10, Math.max(3, Math.ceil(videoDuration / 120))); // 1 chapter per 2 minutes
+
+    // Simple rule: 1 chapter per 300 words or 2 minutes, whichever is smaller
+    const wordsPerChapter = 300;
+    const maxChapters = Math.min(8, Math.max(3, Math.ceil(videoDuration / 120)));
     const chaptersCount = Math.min(maxChapters, Math.ceil(words.length / wordsPerChapter));
-    
+
     const chapters = [];
     const wordsPerSection = Math.ceil(words.length / chaptersCount);
     const secondsPerChapter = videoDuration / chaptersCount;
-    
+
     for (let i = 0; i < chaptersCount; i++) {
       const startIdx = i * wordsPerSection;
       const endIdx = Math.min((i + 1) * wordsPerSection, words.length);
       const chapterWords = words.slice(startIdx, endIdx);
-      const chapterText = chapterWords.join(' ');
-      
+
       // Calculate timestamp
       const timestampSeconds = Math.floor(i * secondsPerChapter);
       const timestamp = formatTimestamp(timestampSeconds);
-      
-      // Extract key phrases for title (first few words or sentence)
-      const firstSentence = chapterText.match(/^[^.!?]+[.!?]/)?.[0] || chapterText.substring(0, 50);
-      const titleWords = firstSentence.split(/\s+/).slice(0, 6).join(' ');
-      const title = titleWords.length > 5 ? titleWords : `Section ${i + 1}`;
-      
-      // Create summary
-      const summary = chapterText.substring(0, 120).trim() + (chapterText.length > 120 ? '...' : '');
-      
+
+      // Simple title: first 5-7 words
+      const titleWords = chapterWords.slice(0, 7).join(' ');
+      const title = titleWords.length > 10 ? titleWords : `Section ${i + 1}`;
+
+      // Simple summary: first 25 words
+      const summary = chapterWords.slice(0, 25).join(' ') + (chapterWords.length > 25 ? '...' : '');
+
       chapters.push({
         timestamp,
         timestampSeconds,
@@ -297,19 +324,15 @@ function generateBasicChapters(transcript, metadata = {}) {
         summary
       });
     }
-    
-    return chapters.length > 0 ? chapters : [{
-      timestamp: '0:00',
-      timestampSeconds: 0,
-      title: metadata.title || 'Full Video',
-      summary: transcript.substring(0, 150)
-    }];
+
+    console.log(`[Offscreen] Generated ${chapters.length} fallback chapters`);
+    return chapters;
   } catch (error) {
     console.error('[Offscreen] Fallback generation error:', error);
     return [{
       timestamp: '0:00',
       timestampSeconds: 0,
-      title: 'Content',
+      title: 'Video Content',
       summary: 'Unable to generate chapters'
     }];
   }
@@ -319,7 +342,7 @@ function formatTimestamp(seconds) {
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
-  
+
   if (hrs > 0) {
     return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   }
@@ -345,10 +368,10 @@ async function generateQuizAI(chapters, transcript) {
     }
 
     // Build comprehensive context
-    const chaptersText = chapters.map((ch, i) => 
+    const chaptersText = chapters.map((ch, i) =>
       `Chapter ${i + 1} (${ch.timestamp}): ${ch.title}\n${ch.summary}`
     ).join('\n\n');
-    
+
     const prompt = `You are an expert educator creating a quiz to test understanding of video content.
 
 VIDEO CHAPTERS:
@@ -397,7 +420,7 @@ IMPORTANT: Return ONLY the JSON array, nothing else.`;
 
     console.log('[Offscreen] Generating quiz with enhanced prompt...');
     const response = await languageModelSession.prompt(prompt);
-    
+
     try {
       // Try to extract JSON from response
       const jsonMatch = response.match(/\[[\s\S]*\]/);
@@ -405,20 +428,20 @@ IMPORTANT: Return ONLY the JSON array, nothing else.`;
         console.error('[Offscreen] No JSON array found in response');
         return generateBasicQuiz(chapters);
       }
-      
+
       const jsonStr = jsonMatch[0];
       const questions = JSON.parse(jsonStr);
-      
+
       if (!Array.isArray(questions) || questions.length === 0) {
         console.error('[Offscreen] Invalid questions array');
         return generateBasicQuiz(chapters);
       }
-      
+
       // Validate and enhance questions
       const validQuestions = questions
-        .filter(q => 
-          q.question && 
-          Array.isArray(q.options) && 
+        .filter(q =>
+          q.question &&
+          Array.isArray(q.options) &&
           q.options.length === 4 &&
           typeof q.correctIndex === 'number' &&
           q.correctIndex >= 0 &&
@@ -432,12 +455,12 @@ IMPORTANT: Return ONLY the JSON array, nothing else.`;
           difficulty: q.difficulty || 'medium'
         }))
         .slice(0, 5);
-      
+
       if (validQuestions.length === 0) {
         console.error('[Offscreen] No valid questions after filtering');
         return generateBasicQuiz(chapters);
       }
-      
+
       console.log(`[Offscreen] ✅ Generated ${validQuestions.length} quiz questions`);
       return validQuestions;
     } catch (parseError) {
@@ -457,7 +480,7 @@ function generateBasicQuiz(chapters) {
   }
 
   const questions = [];
-  
+
   // Question templates for variety
   const templates = [
     {
@@ -506,11 +529,11 @@ function generateBasicQuiz(chapters) {
       ]
     }
   ];
-  
+
   // Generate questions from chapters with variety
   chapters.slice(0, 5).forEach((ch, i) => {
     const template = templates[i % templates.length];
-    
+
     // Extract key words from summary for wrong answers
     const summaryWords = ch.summary.split(' ').filter(w => w.length > 5);
     const wrongAnswerVariations = [
@@ -518,7 +541,7 @@ function generateBasicQuiz(chapters) {
       `Focuses on ${summaryWords[1] || 'different aspects'} instead`,
       `Discusses ${summaryWords[2] || 'other concepts'} primarily`
     ];
-    
+
     questions.push({
       question: template.question(ch, i),
       options: [
@@ -538,58 +561,63 @@ function generateBasicQuiz(chapters) {
 
 async function explainMomentAI(context, transcript, frameData) {
   try {
+    console.log('[Offscreen] Generating explanation...');
+    console.log('[Offscreen] Context:', context);
+    console.log('[Offscreen] Has transcript:', !!transcript);
+    console.log('[Offscreen] Has frame:', !!frameData);
+
+    // If no transcript, provide context-based explanation
+    if (!transcript || transcript.length < 10) {
+      console.log('[Offscreen] No transcript, using context only');
+      return context + '. The video is presenting this content at this moment.';
+    }
+
     if (!self.ai || !self.ai.languageModel) {
-      return 'At this moment in the video, the content is being presented.';
+      console.log('[Offscreen] AI not available, using fallback');
+      // Provide intelligent fallback based on context
+      return `${context}. ${transcript.substring(0, 150)}...`;
     }
 
     const availability = await self.ai.languageModel.availability();
+    console.log('[Offscreen] AI availability:', availability);
+
     if (availability === 'unavailable') {
-      return 'At this moment in the video, the content is being presented.';
+      // Provide intelligent fallback
+      return `${context}. ${transcript.substring(0, 150)}...`;
     }
 
     if (!languageModelSession) {
+      console.log('[Offscreen] Creating AI session...');
       languageModelSession = await self.ai.languageModel.create({
         temperature: 0.7,
         topK: 40
       });
     }
 
-    // Build prompt with or without image
-    let prompt;
-    if (frameData) {
-      // Multimodal prompt with image
-      prompt = `Analyze this video frame and explain what's happening in 1-2 sentences.
+    // Text-only prompt (multimodal not yet supported in Chrome AI)
+    const prompt = `Explain what's happening at this moment in the video in 1-2 clear sentences.
 
-CONTEXT: ${context}
+${context}
 
-TRANSCRIPT EXCERPT: ${transcript.substring(0, 500)}
+TRANSCRIPT EXCERPT:
+${transcript.substring(0, 800)}
 
-[Image: Video frame at this moment]
+Provide a concise, helpful explanation (max 200 characters):`;
 
-Provide a clear, concise explanation (max 150 characters):`;
-      
-      // Note: Chrome's Prompt API multimodal support may vary
-      // If image input is supported, it would be passed here
-      // For now, we'll use text-only as fallback
-    } else {
-      // Text-only prompt
-      prompt = `Explain what's happening at this moment in the video in 1-2 sentences.
-
-CONTEXT: ${context}
-
-TRANSCRIPT: ${transcript.substring(0, 500)}
-
-Provide a clear, concise explanation (max 150 characters):`;
-    }
-
+    console.log('[Offscreen] Sending prompt to AI...');
     const response = await languageModelSession.prompt(prompt);
-    
+    console.log('[Offscreen] AI response received:', response.substring(0, 100));
+
     // Clean up response
-    const explanation = response.trim().substring(0, 200);
-    return explanation || 'At this moment, the video is presenting key concepts.';
+    const explanation = response.trim().substring(0, 250);
+    return explanation || `${context}. The video is explaining this topic in detail.`;
   } catch (error) {
     console.error('[Offscreen] Explanation error:', error);
-    return 'At this moment in the video, the content is being presented.';
+    // Provide intelligent fallback even on error
+    if (transcript && transcript.length > 10) {
+      return `${context}. ${transcript.substring(0, 150)}...`;
+    }
+    return context + '. The video is presenting this content.';
   }
 }
 
