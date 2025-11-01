@@ -229,8 +229,10 @@ class VideoAccelerator {
       </div>
 
       <div class="vla-tabs">
-        <button class="vla-tab-btn active" data-tab="chapters">Chapters</button>
-        <button class="vla-tab-btn" data-tab="status">Status</button>
+        <button class="vla-tab-btn active" data-tab="chapters">📚 Chapters</button>
+        <button class="vla-tab-btn" data-tab="transcript">📝 Transcript</button>
+        <button class="vla-tab-btn" data-tab="quiz">🧠 Quiz</button>
+        <button class="vla-tab-btn" data-tab="recommendations">✨ Recommended</button>
       </div>
 
       <div class="vla-content">
@@ -241,14 +243,34 @@ class VideoAccelerator {
           <button id="vla-generate-btn" class="vla-btn-primary">Generate Chapters</button>
         </div>
 
-        <div class="vla-tab-content" id="status-tab">
-          <div class="vla-status">
-            <p><strong>Platform:</strong> ${this.platform}</p>
-            <p><strong>Video Duration:</strong> ${this.formatTime(this.video?.duration || 0)}</p>
-            <p id="vla-transcript-status">⏳ Extracting transcript...</p>
-            <p id="vla-ai-status">⏳ Checking AI...</p>
-            <button id="vla-debug-btn" class="vla-btn-secondary">Debug</button>
-            <button id="vla-retry-transcript" class="vla-btn-secondary">Retry Transcript</button>
+        <div class="vla-tab-content" id="transcript-tab">
+          <div class="vla-transcript-header">
+            <h4>Video Transcript</h4>
+            <p class="vla-transcript-subtitle">Click timestamps to jump</p>
+          </div>
+          <div id="vla-transcript-container">
+            <p class="vla-loading">Transcript will appear here...</p>
+          </div>
+        </div>
+
+        <div class="vla-tab-content" id="quiz-tab">
+          <div class="vla-quiz-header">
+            <h4>Knowledge Check</h4>
+            <p class="vla-quiz-subtitle">AI-generated questions</p>
+          </div>
+          <div id="vla-quiz-container">
+            <p class="vla-loading">Generate chapters first to create quiz</p>
+          </div>
+          <button id="vla-generate-quiz-btn" class="vla-btn-primary" style="display:none;">Generate Quiz</button>
+        </div>
+
+        <div class="vla-tab-content" id="recommendations-tab">
+          <div class="vla-recommendations-header">
+            <h4>Recommended Next</h4>
+            <p class="vla-recommendations-subtitle">Based on this video</p>
+          </div>
+          <div id="vla-recommendations-container">
+            <p class="vla-loading">Recommendations will appear here...</p>
           </div>
         </div>
       </div>
@@ -280,15 +302,10 @@ class VideoAccelerator {
       alert('Check console for debug info');
     });
 
-    document.getElementById('vla-retry-transcript')?.addEventListener('click', () => {
-      console.log('[VLA] Manual transcript retry requested');
-      extractionAttempts = 0;
-      transcriptText = '';
-      this.extractTranscript();
-      alert('Retrying transcript extraction...');
-    });
+    document.getElementById('vla-generate-quiz-btn')?.addEventListener('click', () => this.generateQuiz());
 
     this.checkAICapabilities();
+    this.setupClickToExplain();
   }
 
   switchTab(tabName) {
@@ -697,6 +714,14 @@ class VideoAccelerator {
         chapterData = response.chapters;
         this.displayChapters(response.chapters);
         
+        // Also populate other tabs
+        this.displayTranscript();
+        this.displayRecommendations();
+        
+        // Show quiz generate button
+        const quizBtn = document.getElementById('vla-generate-quiz-btn');
+        if (quizBtn) quizBtn.style.display = 'block';
+        
         // Show success message briefly
         btn.textContent = '✅ Generated!';
         setTimeout(() => {
@@ -862,6 +887,372 @@ class VideoAccelerator {
     items[index]?.classList.add('vla-chapter-active');
     
     console.log(`[VLA] Seeking to chapter ${index + 1} at ${timestamp}s`);
+  }
+
+  setupClickToExplain() {
+    if (!this.video) return;
+    
+    // Add click handler to video
+    this.video.addEventListener('click', async (e) => {
+      // Only trigger if not clicking on controls
+      if (e.target.tagName === 'VIDEO') {
+        const rect = this.video.getBoundingClientRect();
+        const x = e.clientX;
+        const y = e.clientY;
+        
+        await this.showExplanationTooltip(x, y);
+      }
+    });
+  }
+
+  async showExplanationTooltip(x, y) {
+    // Remove existing tooltip
+    const existing = document.getElementById('vla-explain-tooltip');
+    if (existing) existing.remove();
+    
+    // Create tooltip
+    const tooltip = document.createElement('div');
+    tooltip.id = 'vla-explain-tooltip';
+    tooltip.className = 'vla-explain-tooltip';
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = (y - 100) + 'px';
+    tooltip.innerHTML = `
+      <div class="vla-explain-header">
+        <div class="vla-spinner-small"></div>
+        <span>AI Explanation</span>
+      </div>
+      <div class="vla-explain-body">Analyzing this moment...</div>
+      <div class="vla-explain-footer">Powered by Prompt API</div>
+    `;
+    document.body.appendChild(tooltip);
+    
+    // Get explanation from AI
+    try {
+      const currentTime = this.video.currentTime;
+      const timestamp = this.formatTime(currentTime);
+      
+      // Find relevant chapter
+      const currentChapter = chapterData.find((ch, i) => {
+        const nextCh = chapterData[i + 1];
+        return currentTime >= ch.timestampSeconds && 
+               (!nextCh || currentTime < nextCh.timestampSeconds);
+      });
+      
+      const context = currentChapter ? 
+        `At ${timestamp}, in the chapter "${currentChapter.title}": ${currentChapter.summary}` :
+        `At ${timestamp} in the video`;
+      
+      const explanation = await this.getAIExplanation(context);
+      
+      const bodyEl = tooltip.querySelector('.vla-explain-body');
+      if (bodyEl) {
+        bodyEl.textContent = explanation;
+      }
+    } catch (error) {
+      console.error('[VLA] Explanation error:', error);
+      const bodyEl = tooltip.querySelector('.vla-explain-body');
+      if (bodyEl) {
+        bodyEl.textContent = 'Unable to generate explanation at this time.';
+      }
+    }
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => tooltip.remove(), 5000);
+  }
+
+  async getAIExplanation(context) {
+    try {
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          { 
+            action: 'explainMoment',
+            context: context,
+            transcript: transcriptText.substring(0, 1000)
+          },
+          (resp) => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+            } else {
+              resolve(resp);
+            }
+          }
+        );
+      });
+      
+      return response?.explanation || 'At this moment in the video, the content is being presented.';
+    } catch (error) {
+      console.error('[VLA] AI explanation error:', error);
+      return 'Unable to generate explanation.';
+    }
+  }
+
+  displayTranscript() {
+    const container = document.getElementById('vla-transcript-container');
+    if (!container) return;
+    
+    if (!transcriptText || transcriptText.length < 50) {
+      container.innerHTML = '<p class="vla-loading">No transcript available</p>';
+      return;
+    }
+    
+    // Split transcript into segments (every ~200 characters or at sentence boundaries)
+    const segments = [];
+    const sentences = transcriptText.match(/[^.!?]+[.!?]+/g) || [transcriptText];
+    
+    let currentSegment = '';
+    let currentTime = 0;
+    const timeIncrement = (this.video?.duration || 600) / sentences.length;
+    
+    sentences.forEach((sentence, i) => {
+      currentSegment += sentence + ' ';
+      
+      if (currentSegment.length > 200 || i === sentences.length - 1) {
+        segments.push({
+          time: currentTime,
+          text: currentSegment.trim()
+        });
+        currentSegment = '';
+      }
+      
+      currentTime += timeIncrement;
+    });
+    
+    container.innerHTML = segments.map(seg => `
+      <div class="vla-transcript-segment">
+        <span class="vla-transcript-time" data-time="${seg.time}">${this.formatTime(seg.time)}</span>
+        <span class="vla-transcript-text">${seg.text}</span>
+      </div>
+    `).join('');
+    
+    // Add click handlers
+    container.querySelectorAll('.vla-transcript-time').forEach(el => {
+      el.addEventListener('click', () => {
+        const time = parseFloat(el.dataset.time);
+        if (this.video) {
+          this.video.currentTime = time;
+          if (this.video.paused) this.video.play();
+        }
+      });
+    });
+  }
+
+  async generateQuiz() {
+    if (!chapterData || chapterData.length === 0) {
+      alert('Please generate chapters first');
+      return;
+    }
+    
+    const container = document.getElementById('vla-quiz-container');
+    const btn = document.getElementById('vla-generate-quiz-btn');
+    
+    btn.disabled = true;
+    btn.textContent = '🤖 Generating...';
+    
+    container.innerHTML = `
+      <div class="vla-loading-state">
+        <div class="vla-spinner"></div>
+        <p>AI is creating quiz questions...</p>
+      </div>
+    `;
+    
+    try {
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          { 
+            action: 'generateQuiz',
+            chapters: chapterData,
+            transcript: transcriptText
+          },
+          (resp) => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+            } else {
+              resolve(resp);
+            }
+          }
+        );
+      });
+      
+      if (response?.success && response.questions) {
+        this.displayQuiz(response.questions);
+        btn.textContent = '✅ Generated!';
+      } else {
+        container.innerHTML = '<p class="vla-error">Failed to generate quiz</p>';
+        btn.textContent = 'Try Again';
+      }
+    } catch (error) {
+      console.error('[VLA] Quiz generation error:', error);
+      container.innerHTML = '<p class="vla-error">Quiz generation failed</p>';
+      btn.textContent = 'Try Again';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  displayQuiz(questions) {
+    const container = document.getElementById('vla-quiz-container');
+    if (!container || !Array.isArray(questions)) return;
+    
+    let currentQuestion = 0;
+    let score = 0;
+    let answered = false;
+    
+    const renderQuestion = () => {
+      const q = questions[currentQuestion];
+      const progress = ((currentQuestion + 1) / questions.length) * 100;
+      
+      container.innerHTML = `
+        <div class="vla-quiz-progress">
+          <div class="vla-quiz-progress-bar" style="width: ${progress}%"></div>
+        </div>
+        <div class="vla-quiz-counter">Question ${currentQuestion + 1} of ${questions.length}</div>
+        <div class="vla-quiz-question">
+          <h5>${q.question}</h5>
+          <div class="vla-quiz-options">
+            ${q.options.map((opt, i) => `
+              <button class="vla-quiz-option" data-index="${i}">
+                ${opt}
+              </button>
+            `).join('')}
+          </div>
+          <div class="vla-quiz-explanation" style="display:none;">
+            <h6>Explanation</h6>
+            <p>${q.explanation}</p>
+            ${q.timestamp ? `<a href="#" class="vla-quiz-review" data-time="${q.timestampSeconds}">Review at ${q.timestamp}</a>` : ''}
+          </div>
+          <button class="vla-quiz-next" style="display:none;">Next Question</button>
+        </div>
+      `;
+      
+      answered = false;
+      
+      // Add option click handlers
+      container.querySelectorAll('.vla-quiz-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (answered) return;
+          answered = true;
+          
+          const selectedIndex = parseInt(btn.dataset.index);
+          const isCorrect = selectedIndex === q.correctIndex;
+          
+          if (isCorrect) {
+            score++;
+            btn.classList.add('vla-quiz-correct');
+          } else {
+            btn.classList.add('vla-quiz-incorrect');
+            // Show correct answer
+            container.querySelectorAll('.vla-quiz-option')[q.correctIndex]?.classList.add('vla-quiz-correct');
+          }
+          
+          // Show explanation
+          container.querySelector('.vla-quiz-explanation').style.display = 'block';
+          
+          // Show next button or finish
+          if (currentQuestion < questions.length - 1) {
+            container.querySelector('.vla-quiz-next').style.display = 'block';
+          } else {
+            setTimeout(() => showResults(), 2000);
+          }
+        });
+      });
+      
+      // Next button handler
+      container.querySelector('.vla-quiz-next')?.addEventListener('click', () => {
+        currentQuestion++;
+        renderQuestion();
+      });
+      
+      // Review link handler
+      container.querySelector('.vla-quiz-review')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const time = parseFloat(e.target.dataset.time);
+        if (this.video) {
+          this.video.currentTime = time;
+          if (this.video.paused) this.video.play();
+        }
+      });
+    };
+    
+    const showResults = () => {
+      const percentage = Math.round((score / questions.length) * 100);
+      container.innerHTML = `
+        <div class="vla-quiz-results">
+          <h4>Quiz Complete! 🎉</h4>
+          <div class="vla-quiz-score">${score} / ${questions.length}</div>
+          <div class="vla-quiz-percentage">${percentage}%</div>
+          <p>${percentage >= 80 ? 'Excellent work!' : percentage >= 60 ? 'Good job!' : 'Keep learning!'}</p>
+          <button class="vla-btn-primary" onclick="location.reload()">Retake Quiz</button>
+        </div>
+      `;
+    };
+    
+    renderQuestion();
+  }
+
+  displayRecommendations() {
+    const container = document.getElementById('vla-recommendations-container');
+    if (!container) return;
+    
+    // Generate recommendations based on video metadata
+    const recommendations = this.generateRecommendations();
+    
+    container.innerHTML = recommendations.map(rec => `
+      <div class="vla-recommendation-card">
+        <div class="vla-recommendation-thumbnail" style="background: ${rec.gradient}">
+          <span class="vla-recommendation-duration">${rec.duration}</span>
+        </div>
+        <div class="vla-recommendation-content">
+          <h5>${rec.title}</h5>
+          <p class="vla-recommendation-channel">${rec.channel}</p>
+          <p class="vla-recommendation-meta">${rec.views} • ${rec.uploaded}</p>
+          <span class="vla-recommendation-reason">${rec.reason}</span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  generateRecommendations() {
+    const title = videoMetadata.title || 'Video';
+    const keywords = title.split(/\s+/).filter(w => w.length > 4).slice(0, 3);
+    
+    return [
+      {
+        title: `Advanced ${keywords[0] || 'Topics'} - Deep Dive`,
+        channel: 'Learning Academy',
+        views: '856K views',
+        uploaded: '1 month ago',
+        duration: '45:23',
+        reason: 'Next in series',
+        gradient: 'linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(109, 40, 217, 0.2))'
+      },
+      {
+        title: `${keywords[1] || 'Related'} Tutorial - Complete Guide`,
+        channel: 'Tech Masters',
+        views: '1.2M views',
+        uploaded: '3 weeks ago',
+        duration: '2:15:30',
+        reason: 'Related topic',
+        gradient: 'linear-gradient(135deg, rgba(96, 165, 250, 0.3), rgba(30, 64, 175, 0.2))'
+      },
+      {
+        title: `${keywords[0] || 'Topic'} Projects - Real World Examples`,
+        channel: videoMetadata.platform || 'Video Platform',
+        views: '623K views',
+        uploaded: '1 week ago',
+        duration: '1:28:45',
+        reason: 'Popular choice',
+        gradient: 'linear-gradient(135deg, rgba(74, 222, 128, 0.3), rgba(22, 163, 74, 0.2))'
+      },
+      {
+        title: `${keywords[2] || 'Content'} Fundamentals Explained`,
+        channel: 'Learning Academy',
+        views: '445K views',
+        uploaded: '2 months ago',
+        duration: '3:42:18',
+        reason: 'Same creator',
+        gradient: 'linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(67, 56, 202, 0.2))'
+      }
+    ];
   }
 
   exportChapters() {

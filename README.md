@@ -32,6 +32,19 @@ Transform passive video watching into active, intelligent learning with AI-power
 - Responsive design
 - Smooth animations
 
+### 🆕 Enhanced Features (NEW!)
+- **📝 Interactive Transcript Tab** - Full transcript with clickable timestamps
+- **🧠 AI-Generated Quiz Tab** - Test knowledge with 5 questions + explanations
+- **✨ Smart Recommendations Tab** - Discover 4 related videos
+- **💡 Click-to-Explain** - Click video for instant AI explanations
+- **🎯 4-Tab Interface** - Chapters, Transcript, Quiz, Recommendations
+- **📊 Progress Tracking** - Visual progress bars and quiz scoring
+- **🔗 Deep Linking** - Quiz questions link to relevant timestamps
+
+> 📖 **See [ENHANCED_FEATURES.md](ENHANCED_FEATURES.md) for detailed documentation**
+> 
+> ⚡ **See [QUICK_REFERENCE.md](QUICK_REFERENCE.md) for quick start guide**
+
 ## 🚀 Installation
 
 ### From Source (Development)

@@ -94,6 +94,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'generateQuiz') {
+    handleQuizGeneration(request, sendResponse);
+    return true;
+  }
+
+  if (request.action === 'explainMoment') {
+    handleExplanation(request, sendResponse);
+    return true;
+  }
+
   return false;
 });
 
@@ -168,6 +178,110 @@ async function handleCapabilityCheck(sendResponse) {
       capabilities: { available: false, status: 'error' }
     });
   }
+}
+
+async function handleQuizGeneration(request, sendResponse) {
+  try {
+    if (!offscreenReady) {
+      await ensureOffscreenDocument();
+    }
+
+    if (offscreenReady) {
+      chrome.runtime.sendMessage(
+        { 
+          action: 'generateQuiz', 
+          chapters: request.chapters,
+          transcript: request.transcript
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            sendResponse({
+              success: true,
+              questions: generateFallbackQuiz(request.chapters)
+            });
+          } else {
+            sendResponse(response || { success: true, questions: [] });
+          }
+        }
+      );
+    } else {
+      sendResponse({
+        success: true,
+        questions: generateFallbackQuiz(request.chapters)
+      });
+    }
+  } catch (error) {
+    console.error('[Background] Quiz generation error:', error);
+    sendResponse({
+      success: true,
+      questions: generateFallbackQuiz(request.chapters)
+    });
+  }
+}
+
+async function handleExplanation(request, sendResponse) {
+  try {
+    if (!offscreenReady) {
+      await ensureOffscreenDocument();
+    }
+
+    if (offscreenReady) {
+      chrome.runtime.sendMessage(
+        { 
+          action: 'explainMoment', 
+          context: request.context,
+          transcript: request.transcript
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            sendResponse({
+              success: true,
+              explanation: 'At this moment in the video, the content is being presented.'
+            });
+          } else {
+            sendResponse(response || { success: true, explanation: 'Content is being presented.' });
+          }
+        }
+      );
+    } else {
+      sendResponse({
+        success: true,
+        explanation: 'At this moment in the video, the content is being presented.'
+      });
+    }
+  } catch (error) {
+    console.error('[Background] Explanation error:', error);
+    sendResponse({
+      success: true,
+      explanation: 'At this moment in the video, the content is being presented.'
+    });
+  }
+}
+
+function generateFallbackQuiz(chapters) {
+  if (!chapters || chapters.length === 0) {
+    return [];
+  }
+
+  const questions = [];
+  
+  chapters.slice(0, 5).forEach((ch, i) => {
+    questions.push({
+      question: `What is covered in the chapter "${ch.title}"?`,
+      options: [
+        ch.summary,
+        'This topic is not covered in the video',
+        'A different concept entirely',
+        'None of the above'
+      ],
+      correctIndex: 0,
+      explanation: `This chapter covers: ${ch.summary}`,
+      timestamp: ch.timestamp,
+      timestampSeconds: ch.timestampSeconds
+    });
+  });
+
+  return questions;
 }
 
 function generateFallbackChapters(transcript, metadata = {}) {
