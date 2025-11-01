@@ -1,19 +1,17 @@
 /**
- * Popup Script
- * Handles popup UI and messaging
+ * Popup Script - Video Learning Accelerator
+ * Handles popup UI and AI status checking
  */
 
 console.log('[Popup] Loaded');
 
 const statusDot = document.getElementById('status-dot');
 const statusText = document.getElementById('status-text');
-const toggleBtn = document.getElementById('toggle-extension');
-const generateBtn = document.getElementById('generate-btn');
-const infoContainer = document.getElementById('info-container');
-const debugBtn = document.getElementById('debug-btn');
+const aiStatusText = document.getElementById('ai-status-text');
 
 // Initialize
 checkStatus();
+checkAIStatus();
 
 async function checkStatus() {
   try {
@@ -30,26 +28,13 @@ async function checkStatus() {
 
     if (!isSupportedPlatform) {
       statusDot.style.backgroundColor = '#ef4444';
-      statusText.textContent = 'Not a supported platform';
-      infoContainer.innerHTML = '<p style="color: #666;">Visit YouTube, Coursera, Udemy, or LinkedIn Learning</p>';
-      toggleBtn.disabled = true;
-      generateBtn.disabled = true;
+      statusText.textContent = 'Not on video platform';
       return;
     }
 
-    // Check settings
-    const settings = await chrome.storage.local.get(['extensionEnabled']);
-    const isEnabled = settings.extensionEnabled !== false;
-
-    if (isEnabled) {
-      statusDot.style.backgroundColor = '#10b981';
-      statusText.textContent = 'Active';
-    } else {
-      statusDot.style.backgroundColor = '#f59e0b';
-      statusText.textContent = 'Disabled';
-    }
-
-    updateInfo();
+    // Extension is active on supported platform
+    statusDot.style.backgroundColor = '#10b981';
+    statusText.textContent = 'Ready';
   } catch (error) {
     console.error('[Popup] Error:', error);
     statusDot.style.backgroundColor = '#ef4444';
@@ -57,67 +42,26 @@ async function checkStatus() {
   }
 }
 
-async function updateInfo() {
+async function checkAIStatus() {
   try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    const tab = tabs[0];
-    
-    // Send message to content script to get status
-    chrome.tabs.sendMessage(tab.id, { action: 'getStatus' }, (response) => {
-      if (chrome.runtime.lastError || !response) {
-        infoContainer.innerHTML = `
-          <p><strong>✓</strong> Extension active on this page</p>
-          <p><strong>→</strong> Open sidebar to generate chapters</p>
-          <p style="font-size: 12px; color: #666; margin-top: 10px;">Keyboard shortcuts:</p>
-          <p style="font-size: 11px; color: #666;">Alt+C: Toggle sidebar</p>
-          <p style="font-size: 11px; color: #666;">Alt+G: Generate chapters</p>
-          <p style="font-size: 11px; color: #666;">Alt+E: Export chapters</p>
-        `;
-      } else {
-        const { hasChapters, chapterCount, videoDetected } = response;
-        infoContainer.innerHTML = `
-          <p><strong>Video:</strong> ${videoDetected ? '✓ Detected' : '✗ Not found'}</p>
-          <p><strong>Chapters:</strong> ${hasChapters ? `${chapterCount} generated` : 'None yet'}</p>
-          <p style="font-size: 12px; color: #666; margin-top: 10px;">Keyboard shortcuts:</p>
-          <p style="font-size: 11px; color: #666;">Alt+C: Toggle sidebar</p>
-          <p style="font-size: 11px; color: #666;">Alt+G: Generate</p>
-          <p style="font-size: 11px; color: #666;">Alt+E: Export</p>
-        `;
-      }
+    const response = await new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        { action: 'checkAICapabilities' },
+        (resp) => resolve(resp)
+      );
     });
+
+    if (response?.success && response.capabilities?.available) {
+      aiStatusText.innerHTML = '✅ <strong>AI Ready</strong><br><small>Gemini Nano available</small>';
+      aiStatusText.style.color = '#10b981';
+    } else {
+      const status = response?.capabilities?.status || 'unavailable';
+      aiStatusText.innerHTML = `⚠️ <strong>AI ${status}</strong><br><small>Using fallback mode</small>`;
+      aiStatusText.style.color = '#f59e0b';
+    }
   } catch (error) {
-    console.error('[Popup] Error updating info:', error);
-    infoContainer.innerHTML = `
-      <p><strong>✓</strong> Extension active</p>
-      <p style="font-size: 12px; color: #666;">Open sidebar on video page</p>
-    `;
+    console.error('[Popup] AI check error:', error);
+    aiStatusText.innerHTML = '❌ <strong>AI Unavailable</strong><br><small>Using fallback mode</small>';
+    aiStatusText.style.color = '#ef4444';
   }
 }
-
-toggleBtn.addEventListener('click', async () => {
-  const settings = await chrome.storage.local.get(['extensionEnabled']);
-  const newState = !(settings.extensionEnabled !== false);
-  await chrome.storage.local.set({ extensionEnabled: newState });
-  checkStatus();
-});
-
-generateBtn.addEventListener('click', async () => {
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  chrome.tabs.sendMessage(tabs[0].id, { action: 'generateChapters' }, (response) => {
-    if (chrome.runtime.lastError) {
-      infoContainer.innerHTML = '<p style="color: #ef4444;">Error: Extension not ready on this page</p>';
-    } else {
-      infoContainer.innerHTML = '<p style="color: #10b981;">✓ Check the sidebar for chapters!</p>';
-    }
-  });
-});
-
-debugBtn.addEventListener('click', () => {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    console.log('[Popup] Debug info:', {
-      tab: tabs[0].url,
-      timestamp: new Date().toLocaleTimeString()
-    });
-    infoContainer.innerHTML = '<p>Debug info logged to console</p>';
-  });
-});

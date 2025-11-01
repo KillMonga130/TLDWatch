@@ -230,7 +230,8 @@ async function handleExplanation(request, sendResponse) {
         { 
           action: 'explainMoment', 
           context: request.context,
-          transcript: request.transcript
+          transcript: request.transcript,
+          frameData: request.frameData
         },
         (response) => {
           if (chrome.runtime.lastError) {

@@ -71,7 +71,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'explainMoment') {
-    explainMomentAI(request.context, request.transcript)
+    explainMomentAI(request.context, request.transcript, request.frameData)
       .then(explanation => sendResponse({ success: true, explanation }))
       .catch(error => {
         console.error('[Offscreen] Explanation error:', error);
@@ -339,53 +339,110 @@ async function generateQuizAI(chapters, transcript) {
 
     if (!languageModelSession) {
       languageModelSession = await self.ai.languageModel.create({
-        temperature: 0.7,
+        temperature: 0.8, // Higher temperature for more creative questions
         topK: 40
       });
     }
 
-    const chaptersText = chapters.map(ch => `${ch.title}: ${ch.summary}`).join('\n');
+    // Build comprehensive context
+    const chaptersText = chapters.map((ch, i) => 
+      `Chapter ${i + 1} (${ch.timestamp}): ${ch.title}\n${ch.summary}`
+    ).join('\n\n');
     
-    const prompt = `Based on this video content, create 5 multiple-choice quiz questions to test understanding.
+    const prompt = `You are an expert educator creating a quiz to test understanding of video content.
 
-CHAPTERS:
+VIDEO CHAPTERS:
 ${chaptersText}
 
 TRANSCRIPT EXCERPT:
-${transcript.substring(0, 1500)}
+${transcript.substring(0, 2000)}
 
-Create 5 questions that:
-1. Test key concepts from different chapters
-2. Have 4 options each (A, B, C, D)
-3. Include explanations for correct answers
-4. Link to relevant chapter timestamps when possible
+Create 5 diverse multiple-choice questions that:
 
-Return ONLY valid JSON array:
+QUESTION TYPES (use variety):
+- Factual recall: "What is X?"
+- Conceptual understanding: "Why does X happen?"
+- Application: "How would you apply X?"
+- Analysis: "What's the relationship between X and Y?"
+- Comparison: "What's the difference between X and Y?"
+
+REQUIREMENTS:
+1. Each question tests a DIFFERENT chapter or concept
+2. Mix difficulty levels (2 easy, 2 medium, 1 hard)
+3. 4 options per question - make wrong answers plausible but clearly incorrect
+4. Correct answer should be unambiguous
+5. Explanation should teach, not just confirm
+6. Link each question to the relevant chapter timestamp
+
+WRONG ANSWER GUIDELINES:
+- Make them believable but clearly wrong
+- Use common misconceptions
+- Avoid obviously silly options
+- Don't use "All of the above" or "None of the above"
+
+Return ONLY valid JSON array (no markdown, no extra text):
 [
   {
-    "question": "What is the main topic discussed?",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "question": "Clear, specific question about the content?",
+    "options": ["Correct answer", "Plausible wrong answer", "Another plausible wrong answer", "Third plausible wrong answer"],
     "correctIndex": 0,
-    "explanation": "Explanation of why this is correct",
+    "explanation": "Detailed explanation of why this is correct and why others are wrong",
     "timestamp": "2:30",
-    "timestampSeconds": 150
+    "timestampSeconds": 150,
+    "difficulty": "easy"
   }
-]`;
+]
 
+IMPORTANT: Return ONLY the JSON array, nothing else.`;
+
+    console.log('[Offscreen] Generating quiz with enhanced prompt...');
     const response = await languageModelSession.prompt(prompt);
     
     try {
+      // Try to extract JSON from response
       const jsonMatch = response.match(/\[[\s\S]*\]/);
-      const jsonStr = jsonMatch ? jsonMatch[0] : response.trim();
-      const questions = JSON.parse(jsonStr);
-      
-      if (!Array.isArray(questions) || questions.length === 0) {
+      if (!jsonMatch) {
+        console.error('[Offscreen] No JSON array found in response');
         return generateBasicQuiz(chapters);
       }
       
-      return questions.slice(0, 5);
+      const jsonStr = jsonMatch[0];
+      const questions = JSON.parse(jsonStr);
+      
+      if (!Array.isArray(questions) || questions.length === 0) {
+        console.error('[Offscreen] Invalid questions array');
+        return generateBasicQuiz(chapters);
+      }
+      
+      // Validate and enhance questions
+      const validQuestions = questions
+        .filter(q => 
+          q.question && 
+          Array.isArray(q.options) && 
+          q.options.length === 4 &&
+          typeof q.correctIndex === 'number' &&
+          q.correctIndex >= 0 &&
+          q.correctIndex < 4
+        )
+        .map(q => ({
+          ...q,
+          // Ensure timestamp fields exist
+          timestamp: q.timestamp || chapters[0]?.timestamp || '0:00',
+          timestampSeconds: q.timestampSeconds || chapters[0]?.timestampSeconds || 0,
+          difficulty: q.difficulty || 'medium'
+        }))
+        .slice(0, 5);
+      
+      if (validQuestions.length === 0) {
+        console.error('[Offscreen] No valid questions after filtering');
+        return generateBasicQuiz(chapters);
+      }
+      
+      console.log(`[Offscreen] ✅ Generated ${validQuestions.length} quiz questions`);
+      return validQuestions;
     } catch (parseError) {
       console.error('[Offscreen] Quiz parse error:', parseError);
+      console.error('[Offscreen] Response was:', response.substring(0, 200));
       return generateBasicQuiz(chapters);
     }
   } catch (error) {
@@ -401,27 +458,85 @@ function generateBasicQuiz(chapters) {
 
   const questions = [];
   
-  // Generate questions from chapters
+  // Question templates for variety
+  const templates = [
+    {
+      type: 'content',
+      question: (ch) => `What is the main focus of "${ch.title}"?`,
+      wrongAnswers: [
+        'A completely unrelated topic',
+        'The opposite of what was discussed',
+        'A topic from a different video'
+      ]
+    },
+    {
+      type: 'sequence',
+      question: (ch, i) => `What topic is covered in chapter ${i + 1}?`,
+      wrongAnswers: [
+        'This is not discussed in the video',
+        'This comes from a different section',
+        'This is mentioned but not as a main topic'
+      ]
+    },
+    {
+      type: 'understanding',
+      question: (ch) => `According to the video, what does "${ch.title}" explain?`,
+      wrongAnswers: [
+        'Something not mentioned in this chapter',
+        'A misconception about the topic',
+        'An unrelated concept'
+      ]
+    },
+    {
+      type: 'recall',
+      question: (ch) => `Which of the following best describes "${ch.title}"?`,
+      wrongAnswers: [
+        'An incorrect interpretation',
+        'A different aspect not covered',
+        'Something from another chapter'
+      ]
+    },
+    {
+      type: 'application',
+      question: (ch) => `What key concept is introduced in "${ch.title}"?`,
+      wrongAnswers: [
+        'A concept not in this video',
+        'A related but different concept',
+        'An advanced topic not yet covered'
+      ]
+    }
+  ];
+  
+  // Generate questions from chapters with variety
   chapters.slice(0, 5).forEach((ch, i) => {
+    const template = templates[i % templates.length];
+    
+    // Extract key words from summary for wrong answers
+    const summaryWords = ch.summary.split(' ').filter(w => w.length > 5);
+    const wrongAnswerVariations = [
+      `Not related to ${summaryWords[0] || 'the topic'}`,
+      `Focuses on ${summaryWords[1] || 'different aspects'} instead`,
+      `Discusses ${summaryWords[2] || 'other concepts'} primarily`
+    ];
+    
     questions.push({
-      question: `What is covered in the chapter "${ch.title}"?`,
+      question: template.question(ch, i),
       options: [
         ch.summary,
-        'This topic is not covered in the video',
-        'A different concept entirely',
-        'None of the above'
+        ...wrongAnswerVariations.slice(0, 3)
       ],
       correctIndex: 0,
-      explanation: `This chapter covers: ${ch.summary}`,
+      explanation: `This chapter covers: ${ch.summary}. The other options are not accurate descriptions of this chapter's content.`,
       timestamp: ch.timestamp,
-      timestampSeconds: ch.timestampSeconds
+      timestampSeconds: ch.timestampSeconds,
+      difficulty: 'easy'
     });
   });
 
   return questions;
 }
 
-async function explainMomentAI(context, transcript) {
+async function explainMomentAI(context, transcript, frameData) {
   try {
     if (!self.ai || !self.ai.languageModel) {
       return 'At this moment in the video, the content is being presented.';
@@ -439,13 +554,33 @@ async function explainMomentAI(context, transcript) {
       });
     }
 
-    const prompt = `Explain what's happening at this moment in the video in 1-2 sentences.
+    // Build prompt with or without image
+    let prompt;
+    if (frameData) {
+      // Multimodal prompt with image
+      prompt = `Analyze this video frame and explain what's happening in 1-2 sentences.
+
+CONTEXT: ${context}
+
+TRANSCRIPT EXCERPT: ${transcript.substring(0, 500)}
+
+[Image: Video frame at this moment]
+
+Provide a clear, concise explanation (max 150 characters):`;
+      
+      // Note: Chrome's Prompt API multimodal support may vary
+      // If image input is supported, it would be passed here
+      // For now, we'll use text-only as fallback
+    } else {
+      // Text-only prompt
+      prompt = `Explain what's happening at this moment in the video in 1-2 sentences.
 
 CONTEXT: ${context}
 
 TRANSCRIPT: ${transcript.substring(0, 500)}
 
 Provide a clear, concise explanation (max 150 characters):`;
+    }
 
     const response = await languageModelSession.prompt(prompt);
     
